@@ -85,12 +85,19 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
                     y_atual = y_topo_questoes
                     coluna_atual = 0
 
+            # 1. Ajuste dinâmico do recuo baseado no número de dígitos
+            if q >= 100:
+                recuo_texto = 11 * mm  # Aumenta o espaço para 3 dígitos
+            else:
+                recuo_texto = 8 * mm   # Mantém o padrão para 1 ou 2 dígitos
+
             # Cálculos de posição
             x_base = margem + 10*mm + (coluna_atual * largura_coluna)
+            y_q = y_atual
             
             # Desenha número da questão
             c.setFont("Helvetica-Bold", 9)
-            c.drawString(x_base - 8*mm, y_atual, f"{q:02d}:")
+            c.drawString(x_base - recuo_texto, y_q, f"{q:02d}:")
             
             # Desenha alternativas
             opts = {}
@@ -117,4 +124,4 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
 
 if __name__ == "__main__":
     # Exemplo: 120 questões, ID de 6 dígitos, 5 alternativas
-    gerar_folha_respostas("prova2.pdf", "mapa_prova2.json", 120, 6, num_alternativas=5)
+    gerar_folha_respostas("prova3.pdf", "mapa_prova3.json", 120, 6, num_alternativas=5)
