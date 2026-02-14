@@ -50,7 +50,8 @@ def gerar_folha_final(pdf_name, json_name, num_questoes, num_digitos_id, num_alt
             cx, cy = margem + 30*mm + (num * 8*mm), y_atual
             c.circle(cx, cy, raio, stroke=1, fill=0)
             c.setFont("Helvetica", 7)
-            c.drawCentredString(cx, y_atual - 4*mm, str(num))
+            # Ajusta o texto para centralizar dentro da bolha
+            c.drawCentredString(cx, cy - 2*mm, str(num))
             linha_id.append({"val": num, "x": cx, "y": cy})
         mapa["paginas"][1]["id_bubbles"].append(linha_id)
         y_atual -= 10*mm
@@ -72,12 +73,13 @@ def gerar_folha_final(pdf_name, json_name, num_questoes, num_digitos_id, num_alt
         c.drawString(margem + 10*mm, y_atual, f"{q:02d}:")
         
         opts = {}
-        for i, letra in enumerate(letras):
-            cx, cy = margem + 25*mm + (i * 10*mm), y_atual
+        for alternativa in letras:
+            cx, cy = margem + 30*mm + (letras.index(alternativa) * 8*mm), y_atual
             c.circle(cx, cy, raio, stroke=1, fill=0)
-            c.setFont("Helvetica", 8)
-            c.drawCentredString(cx, y_atual - 4*mm, letra)
-            opts[letra] = [cx, cy]
+            c.setFont("Helvetica", 7)
+            # Ajusta o texto para centralizar dentro da bolha
+            c.drawCentredString(cx, cy - 2*mm, alternativa)
+            opts[alternativa] = [cx, cy]
             
         mapa["paginas"][len(mapa["paginas"])]["questoes"][str(q)] = opts
         y_atual -= 9*mm
