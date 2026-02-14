@@ -4,7 +4,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 
-def gerar_folha_omr_completa(pdf_name, json_name, num_questoes, num_digitos_id, num_alternativas=5):
+def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num_alternativas=5):
     try:
         letras = [chr(65 + i) for i in range(num_alternativas)]
         c = canvas.Canvas(pdf_name, pagesize=A4)
@@ -117,4 +117,4 @@ def gerar_folha_omr_completa(pdf_name, json_name, num_questoes, num_digitos_id, 
 
 if __name__ == "__main__":
     # Exemplo: 120 questões, ID de 6 dígitos, 5 alternativas
-    gerar_folha_omr_completa("folha_final_segura.pdf", "mapa_final.json", 120, 6, num_alternativas=5)
+    gerar_folha_respostas("prova2.pdf", "mapa_prova2.json", 120, 6, num_alternativas=5)
