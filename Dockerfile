@@ -4,8 +4,18 @@ FROM python:3.13-slim
 # Define o diretório de trabalho
 WORKDIR /app
 
-# Instala dependências do sistema necessárias para o psycopg2
-RUN apt-get update && apt-get install -y libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+# - libpq-dev: para conexão com PostgreSQL
+# - gcc: para compilar extensões Python
+# - libgl1 e libglib2.0-0: para o OpenCV rodar em ambientes sem interface gráfica
+# - libzbar0: biblioteca de sistema para leitura de QR Codes e Códigos de Barras
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    libgl1 \
+    libglib2.0-0 \
+    libzbar0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Instala o Poetry
 RUN pip install poetry
