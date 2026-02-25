@@ -135,3 +135,70 @@ def ler_questoes(image_alinhada, mapa_json):
             respostas_aluno[int(num_q)] = melhor_alternativa
 
     return respostas_aluno
+
+
+def alinhar_e_identificar(image):
+    # Detecta as âncoras e faz o warp inicial para A4 (595x842) 
+    image_warped = align_image(image) 
+    
+    # Busca o QR Code na imagem alinhada
+    decoded_objects = pyzbar.decode(image_warped)
+    if not decoded_objects:
+        # Se não achou, tenta rotacionar a imagem em passos de 90º (bússola) 
+        for _ in range(3):
+            image_warped = cv2.rotate(image_warped, cv2.ROTATE_90_CLOCKWISE)
+            decoded_objects = pyzbar.decode(image_warped)
+            if decoded_objects: break
+            
+    if not decoded_objects:
+        raise ValueError("QR Code não encontrado. Certifique-se de que o cabeçalho está visível.")
+
+    # Extrai o ID da prova (ex: "PROVA_ID:15") 
+    data = decoded_objects[0].data.decode("utf-8")
+    prova_id = int(data.split(":")[-1])
+    
+    return image_warped, prova_id
+
+
+def calcular_resultado(respostas_aluno, gabarito_oficial, pontuacao_maxima=100):
+    """
+    Compara as respostas e calcula o desempenho baseado em uma faixa de notas customizável.
+    
+    :param respostas_aluno: Dict com as respostas lidas do OMR {id_questao: "LETRA"}
+    :param gabarito_oficial: Dict com o gabarito do banco {id_questao: "LETRA"}
+    :param pontuacao_maxima: Valor da nota máxima (Default: 100)
+    """
+    total_questoes = len(gabarito_oficial)
+    acertos = 0
+    detalhes = []
+
+    # Itera sobre o gabarito oficial para conferência
+    for q_num, resposta_correta in gabarito_oficial.items():
+        # Garante que a chave da questão seja tratada como inteiro para bater com o OMR
+        q_int = int(q_num)
+        resposta_aluno = respostas_aluno.get(q_int)
+        
+        is_correto = (str(resposta_aluno).upper() == str(resposta_correta).upper())
+        if is_correto:
+            acertos += 1
+            
+        detalhes.append({
+            "questao": q_int,
+            "esperado": resposta_correta,
+            "recebido": resposta_aluno,
+            "correto": is_correto
+        })
+
+    # Cálculo da nota proporcional à faixa definida
+    if total_questoes > 0:
+        nota_final = (acertos / total_questoes) * pontuacao_maxima
+    else:
+        nota_final = 0
+    
+    return {
+        "nota": round(nota_final, 2),
+        "pontuacao_maxima": pontuacao_maxima,
+        "acertos": acertos,
+        "total_questoes": total_questoes,
+        "detalhe_por_questao": detalhes
+    }
