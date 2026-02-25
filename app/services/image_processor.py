@@ -84,3 +84,54 @@ def ler_nome_aluno_paddle(image_alinhada):
     nome_completo = " ".join(textos).strip().upper()
 
     return nome_completo
+
+def ler_questoes(image_alinhada, mapa_json):
+    """
+    Analisa a marcação das questões baseando-se nas coordenadas do mapa.
+    """
+    # 1. Pré-processamento: Converter para Tons de Cinza e Threshold Adaptativo
+    # Isso transforma a marcação (caneta azul/preta) em preto puro (0)
+    gray = cv2.cvtColor(image_alinhada, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 11, 2
+    )
+
+    respostas_aluno = {}
+    
+    # O mapa pode ter múltiplas páginas. Vamos iterar por elas.
+    # No seu modelo, o mapa tem a chave 'paginas' 
+    paginas = mapa_json.get("paginas", {})
+    
+    for num_pag, dados_pag in paginas.items():
+        questoes = dados_pag.get("questoes", {})
+        
+        # Ordenamos as questões numericamente
+        for num_q in sorted(questoes.keys(), key=int):
+            alternativas = questoes[num_q]
+            melhor_alternativa = None
+            maior_densidade = 0
+            
+            # Analisamos cada letra (A, B, C, D, E) 
+            for letra, coord in alternativas.items():
+                # Coordenadas vindas do JSON (ReportLab usa Y invertido em relação ao OpenCV)
+                x = int(coord[0])
+                # Ajuste de Y: No seu omr_generator, o ReportLab conta de baixo para cima 
+                # A imagem alinhada (842px de altura) precisa da inversão:
+                y = 842 - int(coord[1])
+                
+                # Definimos o raio de busca (ex: 5 pixels ao redor do centro)
+                raio = 6
+                roi = thresh[y-raio:y+raio, x-raio:x+raio]
+                
+                # Contamos pixels brancos (que eram pretos na imagem original devido ao THRESH_BINARY_INV)
+                densidade = cv2.countNonZero(roi)
+                
+                # Critério de marcação: densidade mínima para evitar sujeira/ruído
+                if densidade > maior_densidade and densidade > 25: 
+                    maior_densidade = densidade
+                    melhor_alternativa = letra
+            
+            respostas_aluno[int(num_q)] = melhor_alternativa
+
+    return respostas_aluno
