@@ -37,19 +37,27 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, pro
             qr.make(fit=True)
             img_qr = qr.make_image(fill_color="black", back_color="white")
 
-            # 3. Inserir o QR Code no topo (ex: entre o Nome e a margem direita)
-            c.drawImage(ImageReader(img_qr.get_image()), width - 40*mm, height - 35*mm, width=15*mm, height=15*mm)
-    
-            c.setFont("Helvetica", 8)
-            c.drawRightString(width - 25*mm, height - 38*mm, f"ID Prova: {prova_id}")
-            
-            # 4. Cabeçalho: Título e Nome
+            # 3. Título Centralizado
             c.setFont("Helvetica-Bold", 14)
             c.drawCentredString(width/2, height - 15*mm, f"FOLHA DE RESPOSTAS - PÁG {n}")
-            
+
+            # 4. Posicionar QR Code no Canto Superior Direito (Longe do campo de nome)
+            # Posicionado entre o título e a âncora TR
+            espaco_qr = 15 * mm
+            c.drawImage(ImageReader(img_qr.get_image()), 
+                        width - margem - espaco_qr - 5*mm, 
+                        height - margem - espaco_qr, 
+                        width=espaco_qr, height=espaco_qr)
+    
+            c.setFont("Helvetica", 7)
+            c.drawRightString(width - margem - 5*mm, height - margem - espaco_qr - 3*mm, f"ID Prova: {prova_id}")
+    
+                        
+            # 5. Campo Nome
             c.setFont("Helvetica", 10)
             c.drawString(margem + 10*mm, height - 25*mm, "NOME:")
-            c.rect(margem + 25*mm, height - 27*mm, width - 2*margem - 40*mm, 8*mm)
+            # Retângulo agora utiliza o espaço total sem medo de sobreposição
+            c.rect(margem + 25*mm, height - 27*mm, width - 2*margem - 35*mm, 8*mm)
             
             # 5. Bloco de Identificação (Redundante em cada página)
             y_id = height - 40*mm
