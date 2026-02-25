@@ -1,6 +1,10 @@
+import os
 from fastapi import FastAPI
 from app.database import engine, Base
 from app.api.endpoints import provas
+
+# Cria a pasta de PDFs se não existir
+os.makedirs("static/provas", exist_ok=True)
 
 # Cria as tabelas no banco de dados automaticamente ao iniciar
 # Em projetos maiores, você usaria o Alembic para migrações.
