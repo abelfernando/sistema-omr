@@ -21,52 +21,34 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, pro
         mapa = {"config": {"num_alternativas": num_alternativas}, "paginas": {}}
 
         def preparar_pagina(n, prova_id):
-            # 1. Desenhar Âncoras (Essenciais para o OpenCV)
+            # 1. Âncoras e Título (Mantidos)
             ancoras = {
                 "TL": [margem + tam_ancora/2, height - margem - tam_ancora/2],
                 "TR": [width - margem - tam_ancora/2, height - margem - tam_ancora/2],
                 "BL": [margem + tam_ancora/2, margem + tam_ancora/2],
                 "BR": [width - margem - tam_ancora/2, margem + tam_ancora/2]
             }
-            for k, (x, y) in ancoras.items():
-                c.rect(x - tam_ancora/2, y - tam_ancora/2, tam_ancora, tam_ancora, fill=1)
-
-            # 2. Gerar QR Code com o ID da Prova (Metadados)
-            qr = qrcode.QRCode(box_size=2, border=1)
-            qr.add_data(f"PROVA_ID:{prova_id}")
-            qr.make(fit=True)
-            img_qr = qr.make_image(fill_color="black", back_color="white")
-
-            # 3. Título Centralizado
-            c.setFont("Helvetica-Bold", 14)
-            c.drawCentredString(width/2, height - 15*mm, f"FOLHA DE RESPOSTAS - PÁG {n}")
-
-            # 4. Posicionar QR Code no Canto Superior Direito (Longe do campo de nome)
-            # Posicionado entre o título e a âncora TR
-            espaco_qr = 15 * mm
-            c.drawImage(ImageReader(img_qr.get_image()), 
-                        width - margem - espaco_qr - 5*mm, 
-                        height - margem - espaco_qr, 
-                        width=espaco_qr, height=espaco_qr)
+            for nome, pos in ancoras.items():
+                c.rect(pos[0] - tam_ancora/2, pos[1] - tam_ancora/2, tam_ancora, tam_ancora, fill=1)
     
-            c.setFont("Helvetica", 7)
-            c.drawRightString(width - margem - 5*mm, height - margem - espaco_qr - 3*mm, f"ID Prova: {prova_id}")
-    
-                        
-            # 5. Campo Nome
+            mapa["paginas"][n] = {"ancoras": ancoras, "id_bubbles": [], "questoes": {}}
+
+            c.setFont("Helvetica-Bold", 12)
+            c.drawCentredString(width/2, height - 12*mm, f"FOLHA DE RESPOSTAS - PÁG {n}")
+
+            # 2. Campo Nome (Isolado no topo)
             c.setFont("Helvetica", 10)
-            c.drawString(margem + 10*mm, height - 25*mm, "NOME:")
-            # Retângulo agora utiliza o espaço total sem medo de sobreposição
-            c.rect(margem + 25*mm, height - 27*mm, width - 2*margem - 35*mm, 8*mm)
-            
-            # 5. Bloco de Identificação (Redundante em cada página)
-            y_id = height - 40*mm
+            c.drawString(margem + 10*mm, height - 22*mm, "NOME:")
+            c.rect(margem + 25*mm, height - 24*mm, width - 2*margem - 35*mm, 8*mm)
+
+            # 3. Bloco de Identificação (Lado Esquerdo)
+            y_id = height - 35*mm
             c.setFont("Helvetica-Bold", 10)
             c.drawString(margem + 10*mm, y_id, "IDENTIFICAÇÃO DO ALUNO")
             y_id -= 8*mm
-            
-            mapa["paginas"][n] = {"ancoras": ancoras, "id_bubbles": [], "questoes": {}}
-            
+    
+            x_ultima_coluna = margem + 30*mm # Valor inicial para cálculo do QR Code
+    
             for i in range(num_digitos_id):
                 c.setFont("Helvetica", 8)
                 c.drawString(margem + 10*mm, y_id, f"Díg. {i+1}")
@@ -78,10 +60,28 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, pro
                     c.drawCentredString(cx, cy - 1.2*mm, str(num))
                     linha_id.append({"val": num, "x": cx, "y": cy})
                 mapa["paginas"][n]["id_bubbles"].append(linha_id)
+                x_ultima_coluna = margem + 30*mm + (9 * 8*mm) # Fim da grade de bolinhas
                 y_id -= 8*mm
-            
-            return y_id - 10*mm # Onde as questões podem começar
 
+            # 4. QR Code (Lado Direito da Identificação)
+            # Posicionado dinamicamente após a grade de números
+            qr_size = 20*mm
+            x_qr = x_ultima_coluna + 15*mm 
+            y_qr = (height - 35*mm) - qr_size - 5*mm # Alinhado ao topo do bloco ID
+    
+            qr = qrcode.QRCode(box_size=2, border=1)
+            qr.add_data(f"PROVA_ID:{prova_id}")
+            qr.make(fit=True)
+            img_qr = qr.make_image(fill_color="black", back_color="white")
+    
+            c.drawImage(ImageReader(img_qr.get_image()), x_qr, y_qr, width=qr_size, height=qr_size)
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(x_qr + (qr_size/2), y_qr - 3*mm, f"ID Prova: {prova_id}")
+
+            # Retorna o Y final onde o cabeçalho acaba (abaixo do QR ou das bolinhas, o que for menor)
+            y_fim_cabecalho = min(y_id, y_qr) - 5*mm
+            return y_fim_cabecalho
+        
         # Configuração Dinâmica de Colunas
         espacamento_opcoes = 7 * mm
         largura_coluna = (num_alternativas * espacamento_opcoes) + 18 * mm
@@ -148,4 +148,4 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, pro
 
 if __name__ == "__main__":
     # Exemplo: 120 questões, ID de 6 dígitos, 5 alternativas
-    gerar_folha_respostas("prova3.pdf", "mapa_prova3.json", 120, 6, 15, num_alternativas=5)
+    gerar_folha_respostas("prova27.pdf", "mapa_prova27.json", 120, 6, 15, num_alternativas=5)
