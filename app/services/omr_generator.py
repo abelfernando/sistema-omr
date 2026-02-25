@@ -119,6 +119,8 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
         print(f"Arquivos gerados: {pdf_name} e {json_name}")
         print(f"Local: {os.getcwd()}")
 
+        return mapa
+
     except Exception as e:
         print(f"Erro na geração: {e}")
 
