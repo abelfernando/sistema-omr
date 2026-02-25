@@ -27,7 +27,8 @@ def criar_prova(prova_in: schemas.ProvaCreate, db: Session = Depends(get_db)):
         pdf_path, 
         None, # Não precisamos salvar o arquivo JSON físico se salvarmos no banco
         db_prova.num_questoes, 
-        db_prova.num_digitos_id, 
+        db_prova.num_digitos_id,
+        db_prova.id,
         db_prova.num_alternativas
     )
 
