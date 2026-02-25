@@ -1,5 +1,7 @@
 import json
 import os
+import qrcode
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -18,7 +20,7 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
         
         mapa = {"config": {"num_alternativas": num_alternativas}, "paginas": {}}
 
-        def preparar_pagina(n):
+        def preparar_pagina(n, prova_id):
             # 1. Desenhar Âncoras (Essenciais para o OpenCV)
             ancoras = {
                 "TL": [margem + tam_ancora/2, height - margem - tam_ancora/2],
@@ -28,8 +30,20 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
             }
             for k, (x, y) in ancoras.items():
                 c.rect(x - tam_ancora/2, y - tam_ancora/2, tam_ancora, tam_ancora, fill=1)
+
+            # 2. Gerar QR Code com o ID da Prova (Metadados)
+            qr = qrcode.QRCode(box_size=2, border=1)
+            qr.add_data(f"PROVA_ID:{prova_id}")
+            qr.make(fit=True)
+            img_qr = qr.make_image(fill_color="black", back_color="white")
+
+            # 3. Inserir o QR Code no topo (ex: entre o Nome e a margem direita)
+            c.drawImage(ImageReader(img_qr.get_image()), width - 40*mm, height - 35*mm, width=15*mm, height=15*mm)
+    
+            c.setFont("Helvetica", 8)
+            c.drawRightString(width - 25*mm, height - 38*mm, f"ID Prova: {prova_id}")
             
-            # 2. Cabeçalho: Título e Nome
+            # 4. Cabeçalho: Título e Nome
             c.setFont("Helvetica-Bold", 14)
             c.drawCentredString(width/2, height - 15*mm, f"FOLHA DE RESPOSTAS - PÁG {n}")
             
@@ -37,7 +51,7 @@ def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, num
             c.drawString(margem + 10*mm, height - 25*mm, "NOME:")
             c.rect(margem + 25*mm, height - 27*mm, width - 2*margem - 40*mm, 8*mm)
             
-            # 3. Bloco de Identificação (Redundante em cada página)
+            # 5. Bloco de Identificação (Redundante em cada página)
             y_id = height - 40*mm
             c.setFont("Helvetica-Bold", 10)
             c.drawString(margem + 10*mm, y_id, "IDENTIFICAÇÃO DO ALUNO")
