@@ -1,5 +1,6 @@
 import os
 import cv2
+import uuid
 import numpy as np
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -145,3 +146,48 @@ async def processar_upload_prova(file: UploadFile = File(...),
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+UPLOAD_DIR = "static/processamento"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@router.post("/processar/upload")
+async def processar_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    # ... (lógica de alinhamento e leitura OMR/OCR já implementada) ...
+    
+    # 1. Gerar nomes únicos para os arquivos
+    id_unico = str(uuid.uuid4())
+    nome_orig = f"{id_unico}_orig.jpg"
+    nome_corr = f"{id_unico}_corr.jpg"
+    
+    path_orig = os.path.join(UPLOAD_DIR, nome_orig)
+    path_corr = os.path.join(UPLOAD_DIR, nome_corr)
+
+    # 2. Salvar a foto original (imagem binária vinda do upload)
+    with open(path_orig, "wb") as buffer:
+        buffer.write(await file.read())
+
+    # 3. Gerar e salvar a imagem de correção
+    img_corrigida_visual = gerar_imagem_correcao(
+        image_alinhada, respostas_lidas, db_prova.gabarito, mapa
+    )
+    cv2.imwrite(path_corr, img_corrigida_visual)
+
+    # 4. Salvar no banco com os nomes dos arquivos
+    novo_resultado = models.Resultado(
+        prova_id=db_prova.id,
+        aluno_nome=nome_aluno,
+        aluno_id=id_aluno,
+        nota=resultado["nota"],
+        arquivo_original=nome_orig,
+        arquivo_correcao=nome_corr,
+        respostas_json=respostas_lidas
+    )
+    db.add(novo_resultado)
+    db.commit()
+
+    return {
+        "mensagem": "Correção concluída",
+        "nota": resultado["nota"],
+        "url_correcao": f"/static/processamento/{nome_corr}"
+    }

@@ -202,3 +202,32 @@ def calcular_resultado(respostas_aluno, gabarito_oficial, pontuacao_maxima=100):
         "total_questoes": total_questoes,
         "detalhe_por_questao": detalhes
     }
+
+
+def gerar_imagem_correcao(image_alinhada, respostas_aluno, gabarito_oficial, mapa_json):
+    """
+    Desenha círculos coloridos sobre a imagem para feedback.
+    Verde: Resposta Correta.
+    Vermelho: Resposta Errada do aluno.
+    """
+    img_feedback = image_alinhada.copy()
+    questoes_map = mapa_json['paginas']['1']['questoes']
+    
+    for q_num, resp_correta in gabarito_oficial.items():
+        q_str = str(q_num)
+        if q_str not in questoes_map: continue
+        
+        resp_aluno = respostas_aluno.get(int(q_num))
+        
+        # 1. Desenhar Círculo VERDE na resposta correta
+        coord_correta = questoes_map[q_str][resp_correta]
+        center_correto = (int(coord_correta[0]), 842 - int(coord_correta[1]))
+        cv2.circle(img_feedback, center_correto, 10, (0, 255, 0), 2) # Verde (BGR)
+
+        # 2. Se o aluno errou, desenhar Círculo VERMELHO na resposta dele
+        if resp_aluno and resp_aluno != resp_correta:
+            coord_errada = questoes_map[q_str][resp_aluno]
+            center_errado = (int(coord_errada[0]), 842 - int(coord_errada[1]))
+            cv2.circle(img_feedback, center_errado, 10, (0, 0, 255), 2) # Vermelho
+            
+    return img_feedback

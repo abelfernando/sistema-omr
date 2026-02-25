@@ -23,3 +23,18 @@ class Gabarito(Base):
     resposta_correta = Column(String(1))
 
     prova = relationship("Prova", back_populates="gabaritos")
+
+class Resultado(Base):
+    __tablename__ = "resultados"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    prova_id = Column(Integer, ForeignKey("provas.id"))
+    aluno_nome = Column(String)
+    aluno_id = Column(String)
+    nota = Column(Float)
+    
+    # Novos campos para auditoria e feedback visual
+    arquivo_original = Column(String) # Nome da foto enviada
+    arquivo_correcao = Column(String) # Nome da foto com os círculos coloridos
+    
+    respostas_json = Column(JSON)
