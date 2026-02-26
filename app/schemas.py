@@ -1,37 +1,22 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-
-# --- Schemas para Gabarito ---
-
-class GabaritoBase(BaseModel):
-    numero_questao: int = Field(..., gt=0, description="O número da questão (1, 2, 3...)")
-    resposta_correta: str = Field(..., min_length=1, max_length=1, pattern="^[A-Z]$")
-
-class GabaritoCreate(GabaritoBase):
-    pass
-
-class GabaritoOut(GabaritoBase):
-    id: int
-
-    class Config:
-        from_attributes = True
-
+from datetime import datetime
 
 # --- Schemas para Prova ---
 
 class ProvaBase(BaseModel):
-    titulo: str = Field(..., min_length=3, max_length=100, example="Avaliação de Matemática")
-    num_questoes: int = Field(..., gt=0, le=200, example=50)
-    num_alternativas: int = Field(..., gt=1, le=10, example=5)
-    num_digitos_id: int = Field(..., gt=0, le=10, example=6)
+    titulo: str
+    num_questoes: int
+    num_alternativas: int = 5
+    num_digitos_id: int = 6
+    gabarito: Dict[str, str] # Ex: {"1": "A", "2": "C"}
 
 class ProvaCreate(ProvaBase):
-    # O usuário envia uma lista de respostas corretas ao criar a prova
-    gabaritos: List[GabaritoCreate]
+    mapa_coordenadas: Optional[Dict] = None # Gerado internamente ou enviado no setup
 
-class ProvaOut(ProvaBase):
+class ProvaResponse(ProvaBase):
     id: int
-    mapa_coordenadas: Optional[Dict[str, Any]] = None
+    data_criacao: datetime
     
     class Config:
         from_attributes = True # Permite que o Pydantic leia dados de objetos do SQLAlchemy
@@ -51,11 +36,16 @@ class DesempenhoResponse(BaseModel):
 
 class ResultadoResponse(BaseModel):
     id: int
-    aluno: str
-    matricula: str
+    prova_id: int
+    aluno_nome: str
+    aluno_id: str
     nota: float
-    url_correcao: str
-    detalhes: List[QuestaoDetalhe]
+    #URLs para o frontend exibir as imagens
+    arquivo_original: Optional[str]
+    arquivo_corecao: Optional[str]
+    rspostas_json: Dict[str, str]
+    detalhes: Optional[List[QuestaoDetalhe]] = None # Campo calculado na API
+    data_processamento: datetime
 
     class Config:
         from_attributes = True
