@@ -1,37 +1,33 @@
 services:
-  # Serviço do Banco de Dados
-  db:
-    image: postgres:15
-    container_name: omr_postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin123
-      POSTGRES_DB: omr_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # Serviço da sua API FastAPI
   api:
     build: .
-    container_name: omr_api
-    volumes:
-      - .:/app
+    container_name: sistema_omr_api
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
+      - ./static:/app/static # Persistência de PDFs e imagens processadas
     environment:
-      - DATABASE_URL=postgresql://postgres:admin123@db:5432/omr_db
+      - DATABASE_URL=postgresql://user:password@db:5432/omr_db
+      - PYTHONUNBUFFERED=1
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15-alpine
+    container_name: sistema_omr_db
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=omr_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d omr_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
-
-web:
-  build: .
-  volumes:
-    - ./static:/app/static # Persiste as fotos na sua máquina real
-  ports:
-    - "8000:8000"

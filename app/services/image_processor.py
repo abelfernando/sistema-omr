@@ -5,7 +5,7 @@ from paddleocr import PaddleOCR
 
 # Inicializa o OCR apenas uma vez (fora da função) para carregar o modelo na memória
 # use_angle_cls=True ajuda a identificar se o texto está levemente inclinado
-ocr_engine = PaddleOCR(use_angle_cls=True, lang='pt', show_log=False)
+ocr_engine = PaddleOCR(use_angle_cls=True, lang='pt')
 
 def processar_prova_completa(image_bruta, mapa_json):
     """

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.api.endpoints import provas, resultados
+from app.api.endpoints import provas
 
 # Cria as tabelas no banco de dados automaticamente ao iniciar
 # Em projetos maiores, você usaria o Alembic para migrações.
