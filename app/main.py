@@ -1,38 +1,46 @@
 import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.api.endpoints import provas
-
-# Define o caminho para a pasta de processamento
-# Certifique-se de que este caminho seja o mesmo usado no seu service de upload
-UPLOAD_DIR = "static/processamento"
-
-# Cria o diretório caso ele não exista para evitar erro na inicialização
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# Monta a rota estática
-# directory: pasta física no servidor
-# html: False para servir apenas arquivos brutos (imagens/pdfs)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Cria a pasta de PDFs se não existir
-os.makedirs("static/provas", exist_ok=True)
+from app.api.endpoints import provas, resultados
 
 # Cria as tabelas no banco de dados automaticamente ao iniciar
 # Em projetos maiores, você usaria o Alembic para migrações.
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Sistema OMR API",
-    description="Backend para geração e processamento de folhas de respostas (OMR)",
+    title="Sistema OMR",
+    description="API para Geração e Correção Automática de Provas via QR Code e OMR",
     version="1.0.0"
 )
 
-# Inclui as rotas do módulo de provas
-app.include_router(provas.router, prefix="/api", tags=["Provas"])
+# Configuração de CORS
+# Permite que seu frontend (React, Vue ou Mobile) acesse a API sem bloqueios
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/")
-def read_root():
-    return {"message": "Bem-vindo à API do Sistema OMR. Acesse /docs para a documentação."}
+# Inicialização de Diretórios Estáticos
+# Criamos as pastas necessárias para evitar erros de 'FileNotFound' no upload/geração
+for path in ["static/pdfs", "static/processamento"]:
+    os.makedirs(path, exist_ok=True)
+
+# Servir Arquivos Estáticos
+# Essencial para visualizar a prova corrigida no navegador via URL
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 5. Registro de Rotas
+# Todos os endpoints (Criar Prova, Listar e Upload de Respostas) estão aqui
+app.include_router(provas.router, tags=["Sistema OMR"])
+
+@app.get("/", tags=["Root"])
+async def read_root():
+    return {
+        "status": "online",
+        "docs": "/docs"
+        }
