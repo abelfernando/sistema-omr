@@ -28,3 +28,10 @@ services:
 
 volumes:
   postgres_data:
+
+web:
+  build: .
+  volumes:
+    - ./static:/app/static # Persiste as fotos na sua máquina real
+  ports:
+    - "8000:8000"

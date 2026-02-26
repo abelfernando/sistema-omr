@@ -1,7 +1,21 @@
 import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.database import engine, Base
 from app.api.endpoints import provas
+
+# Define o caminho para a pasta de processamento
+# Certifique-se de que este caminho seja o mesmo usado no seu service de upload
+UPLOAD_DIR = "static/processamento"
+
+# Cria o diretório caso ele não exista para evitar erro na inicialização
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Monta a rota estática
+# directory: pasta física no servidor
+# html: False para servir apenas arquivos brutos (imagens/pdfs)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Cria a pasta de PDFs se não existir
 os.makedirs("static/provas", exist_ok=True)
