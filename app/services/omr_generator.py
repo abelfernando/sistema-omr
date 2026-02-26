@@ -6,146 +6,89 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 
-def gerar_folha_respostas(pdf_name, json_name, num_questoes, num_digitos_id, prova_id, num_alternativas=5):
-    try:
-        letras = [chr(65 + i) for i in range(num_alternativas)]
-        c = canvas.Canvas(pdf_name, pagesize=A4)
-        width, height = A4
-        
-        # Configurações de margens e tamanhos
-        margem = 15 * mm
-        raio = 2.5 * mm
-        tam_ancora = 7 * mm
-        margem_seguranca_inferior = 30 * mm # Protege as âncoras inferiores
-        
-        mapa = {"config": {"num_alternativas": num_alternativas}, "paginas": {}}
-
-        def preparar_pagina(n, prova_id):
-            # 1. Âncoras e Título (Mantidos)
-            ancoras = {
-                "TL": [margem + tam_ancora/2, height - margem - tam_ancora/2],
-                "TR": [width - margem - tam_ancora/2, height - margem - tam_ancora/2],
-                "BL": [margem + tam_ancora/2, margem + tam_ancora/2],
-                "BR": [width - margem - tam_ancora/2, margem + tam_ancora/2]
+def gerar_folha_respostas(pdf_name, num_questoes, num_digitos_id, prova_id, num_alternativas=5):
+    """
+    Gera o PDF da folha de respostas e retorna o mapa de coordenadas dos círculos.
+    """
+    c = canvas.Canvas(pdf_name, pagesize=A4)
+    width, height = A4 # 595.27 x 841.89 pts
+    
+    mapa_coordenadas = {
+        "paginas": {
+            "1": {
+                "questoes": {},
+                "id_bubbles": []
             }
-            for nome, pos in ancoras.items():
-                c.rect(pos[0] - tam_ancora/2, pos[1] - tam_ancora/2, tam_ancora, tam_ancora, fill=1)
-    
-            mapa["paginas"][n] = {"ancoras": ancoras, "id_bubbles": [], "questoes": {}}
+        }
+    }
 
-            c.setFont("Helvetica-Bold", 12)
-            c.drawCentredString(width/2, height - 12*mm, f"FOLHA DE RESPOSTAS - PÁG {n}")
-
-            # 2. Campo Nome (Isolado no topo)
-            c.setFont("Helvetica", 10)
-            c.drawString(margem + 10*mm, height - 22*mm, "NOME:")
-            c.rect(margem + 25*mm, height - 24*mm, width - 2*margem - 35*mm, 8*mm)
-
-            # 3. Bloco de Identificação (Lado Esquerdo)
-            y_id = height - 35*mm
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(margem + 10*mm, y_id, "IDENTIFICAÇÃO DO ALUNO")
-            y_id -= 8*mm
+    # 1. Desenhar Âncoras (4 quadrados pretos nos cantos)
+    # Margem de 15mm, tamanho de 7mm
+    margem = 15 * mm
+    tamanho_ancora = 7 * mm
     
-            x_ultima_coluna = margem + 30*mm # Valor inicial para cálculo do QR Code
+    # Bottom-Left, Top-Left, Top-Right, Bottom-Right
+    pos_ancoras = [
+        (margem, margem), 
+        (margem, height - margem - tamanho_ancora),
+        (width - margem - tamanho_ancora, height - margem - tamanho_ancora),
+        (width - margem, margem)
+    ]
     
-            for i in range(num_digitos_id):
-                c.setFont("Helvetica", 8)
-                c.drawString(margem + 10*mm, y_id, f"Díg. {i+1}")
-                linha_id = []
-                for num in range(10):
-                    cx, cy = margem + 30*mm + (num * 8*mm), y_id
-                    c.circle(cx, cy, raio, stroke=1, fill=0)
-                    c.setFont("Helvetica", 7)
-                    c.drawCentredString(cx, cy - 1.2*mm, str(num))
-                    linha_id.append({"val": num, "x": cx, "y": cy})
-                mapa["paginas"][n]["id_bubbles"].append(linha_id)
-                x_ultima_coluna = margem + 30*mm + (9 * 8*mm) # Fim da grade de bolinhas
-                y_id -= 8*mm
+    for x, y in pos_ancoras:
+        c.rect(x, y, tamanho_ancora, tamanho_ancora, fill=1)
 
-            # 4. QR Code (Lado Direito da Identificação)
-            # Posicionado dinamicamente após a grade de números
-            qr_size = 20*mm
-            x_qr = x_ultima_coluna + 15*mm 
-            y_qr = (height - 35*mm) - qr_size - 5*mm # Alinhado ao topo do bloco ID
+    # 2. Gerar QR Code com o ID da Prova
+    # Formato: "PROVA_ID:123"
+    qr_data = f"PROVA_ID:{prova_id}"
+    qr = qrcode.make(qr_data)
+    qr_path = f"temp_qr_{prova_id}.png"
+    qr.save(qr_path)
     
-            qr = qrcode.QRCode(box_size=2, border=1)
-            qr.add_data(f"PROVA_ID:{prova_id}")
-            qr.make(fit=True)
-            img_qr = qr.make_image(fill_color="black", back_color="white")
-    
-            c.drawImage(ImageReader(img_qr.get_image()), x_qr, y_qr, width=qr_size, height=qr_size)
-            c.setFont("Helvetica", 7)
-            c.drawCentredString(x_qr + (qr_size/2), y_qr - 3*mm, f"ID Prova: {prova_id}")
+    # Posicionar QR Code no topo direito
+    c.drawInlineImage(qr_path, width - 45*mm, height - 45*mm, width=30*mm, height=30*mm)
+    os.remove(qr_path) # Limpa o arquivo temporário
 
-            # Retorna o Y final onde o cabeçalho acaba (abaixo do QR ou das bolinhas, o que for menor)
-            y_fim_cabecalho = min(y_id, y_qr) - 5*mm
-            return y_fim_cabecalho
+    # 3. Gerar Campo de Nome (Retângulo para OCR)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margem + 10*mm, height - 35*mm, "NOME:")
+    c.rect(margem + 28*mm, height - 38*mm, 100*mm, 10*mm) # Retângulo do Nome
+
+    # 4. Gerar Bolinhas de Identificação (Matrícula)
+    # Aqui você deve iterar para criar as colunas de 0-9
+    x_id = margem + 10*mm
+    y_id_start = height - 60*mm
+    for col in range(num_digitos_id):
+        coluna_coords = []
+        for num in range(10):
+            x = x_id + (col * 7*mm)
+            y = y_id_start - (num * 7*mm)
+            c.circle(x, y, 2.5*mm, stroke=1, fill=0)
+            c.setFont("Helvetica", 6)
+            c.drawCentredString(x, y - 1*mm, str(num))
+            # Salva coordenada central para o OMR
+            coluna_coords.append({"x": x, "y": y, "val": num})
+        mapa_coordenadas["paginas"]["1"]["id_bubbles"].append(coluna_coords)
+
+    # 5. Gerar Bolinhas das Questões
+    y_q_start = y_id_start - 80*mm
+    letras = ["A", "B", "C", "D", "E"][:num_alternativas]
+    
+    for q in range(1, num_questoes + 1):
+        y_q = y_q_start - (q * 8*mm)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margem + 5*mm, y_q - 1*mm, f"{q:02d}:")
         
-        # Configuração Dinâmica de Colunas
-        espacamento_opcoes = 7 * mm
-        largura_coluna = (num_alternativas * espacamento_opcoes) + 18 * mm
-        max_colunas = int((width - 2*margem) // largura_coluna)
+        coords_q = {}
+        for i, letra in enumerate(letras):
+            x_q = margem + 20*mm + (i * 10*mm)
+            c.circle(x_q, y_q, 3*mm, stroke=1, fill=0)
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(x_q, y_q - 1*mm, letra)
+            # Salva no mapa (x, y)
+            coords_q[letra] = [x_q, y_q]
+        
+        mapa_coordenadas["paginas"]["1"]["questoes"][str(q)] = coords_q
 
-        # Estado inicial
-        pagina_atual = 1
-        y_topo_questoes = preparar_pagina(pagina_atual, prova_id)
-        y_atual = y_topo_questoes
-        coluna_atual = 0
-
-        for q in range(1, num_questoes + 1):
-            # Checa se o Y atual invadiu a margem de segurança das âncoras
-            if y_atual < margem_seguranca_inferior:
-                coluna_atual += 1
-                y_atual = y_topo_questoes # Reinicia no topo da nova coluna
-                
-                # Se excedeu as colunas da página, cria nova página
-                if coluna_atual >= max_colunas:
-                    c.showPage()
-                    pagina_atual += 1
-                    y_topo_questoes = preparar_pagina(pagina_atual, prova_id)
-                    y_atual = y_topo_questoes
-                    coluna_atual = 0
-
-            # 1. Ajuste dinâmico do recuo baseado no número de dígitos
-            if q >= 100:
-                recuo_texto = 11 * mm  # Aumenta o espaço para 3 dígitos
-            else:
-                recuo_texto = 8 * mm   # Mantém o padrão para 1 ou 2 dígitos
-
-            # Cálculos de posição
-            x_base = margem + 10*mm + (coluna_atual * largura_coluna)
-            y_q = y_atual
-            
-            # Desenha número da questão
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(x_base - recuo_texto, y_q, f"{q:02d}:")
-            
-            # Desenha alternativas
-            opts = {}
-            for i, letra in enumerate(letras):
-                cx, cy = x_base + (i * espacamento_opcoes), y_atual
-                c.circle(cx, cy, raio, stroke=1, fill=0)
-                c.setFont("Helvetica", 7)
-                c.drawCentredString(cx, cy - 1.2*mm, letra)
-                opts[letra] = [cx, cy]
-            
-            mapa["paginas"][pagina_atual]["questoes"][str(q)] = opts
-            y_atual -= 8 * mm # Espaçamento entre linhas de questões
-
-        # Finalização
-        c.save()
-        with open(json_name, "w") as f:
-            json.dump(mapa, f, indent=4)
-            
-        print(f"Arquivos gerados: {pdf_name} e {json_name}")
-        print(f"Local: {os.getcwd()}")
-
-        return mapa
-
-    except Exception as e:
-        print(f"Erro na geração: {e}")
-
-if __name__ == "__main__":
-    # Exemplo: 120 questões, ID de 6 dígitos, 5 alternativas
-    gerar_folha_respostas("prova27.pdf", "mapa_prova27.json", 120, 6, 15, num_alternativas=5)
+    c.save()
+    return mapa_coordenadas
