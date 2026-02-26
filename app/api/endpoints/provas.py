@@ -191,3 +191,82 @@ async def processar_upload(file: UploadFile = File(...), db: Session = Depends(g
         "nota": resultado["nota"],
         "url_correcao": f"/static/processamento/{nome_corr}"
     }
+
+# app/api/endpoints/provas.py
+
+@router.post("/processar-prova/", response_model=schemas.ResultadoResponse)
+async def upload_prova_omr(
+    file: UploadFile = File(...), 
+    nota_maxima: int = 100, 
+    db: Session = Depends(get_db)
+):
+    # 1. Validação de Formato
+    if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        raise HTTPException(status_code=400, detail="Envie uma imagem válida (PNG/JPG).")
+
+    # 2. Leitura da Imagem
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img_original = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    try:
+        # 3. Pipeline de Visão Computacional
+        # Alinha a folha e lê o prova_id via QR Code
+        img_alinhada, prova_id_lido = image_processor.alinhar_e_identificar(img_original)
+
+        # 4. Recuperação dos Dados da Prova no Banco
+        db_prova = db.query(models.Prova).filter(models.Prova.id == prova_id_lido).first()
+        if not db_prova:
+            raise HTTPException(status_code=404, detail="Gabarito não encontrado para esta prova.")
+
+        # 5. Processamento OCR (PaddleOCR) e OMR (Bolhas)
+        nome_aluno = image_processor.ler_nome_aluno_paddle(img_alinhada)
+        id_aluno = image_processor.ler_identificacao_aluno(img_alinhada, db_prova.mapa_coordenadas)
+        respostas_lidas = image_processor.ler_questoes(img_alinhada, db_prova.mapa_coordenadas)
+
+        # 6. Conferência e Nota
+        desempenho = image_processor.calcular_resultado(
+            respostas_lidas, 
+            db_prova.gabarito, 
+            pontuacao_maxima=nota_maxima
+        )
+
+        # 7. Salvar Imagens e Registro de Resultado
+        id_operacao = str(uuid.uuid4())
+        nome_orig = f"{id_operacao}_orig.jpg"
+        nome_corr = f"{id_operacao}_corr.jpg"
+        
+        # Salva as imagens no diretório estático configurado no main.py
+        cv2.imwrite(os.path.join(UPLOAD_DIR, nome_orig), img_original)
+        
+        img_feedback = image_processor.gerar_imagem_correcao(
+            img_alinhada, respostas_lidas, db_prova.gabarito, db_prova.mapa_coordenadas
+        )
+        cv2.imwrite(os.path.join(UPLOAD_DIR, nome_corr), img_feedback)
+
+        # Persistência no PostgreSQL
+        novo_res = models.Resultado(
+            prova_id=db_prova.id,
+            aluno_nome=nome_aluno,
+            aluno_id=id_aluno,
+            nota=desempenho["nota"],
+            arquivo_original=nome_orig,
+            arquivo_correcao=nome_corr,
+            respostas_json=respostas_lidas
+        )
+        db.add(novo_res)
+        db.commit()
+        db.refresh(novo_res)
+
+        return {
+            "id": novo_res.id,
+            "aluno": nome_aluno,
+            "matricula": id_aluno,
+            "nota": desempenho["nota"],
+            "url_correcao": f"/static/processamento/{nome_corr}",
+            "detalhes": desempenho["detalhe_por_questao"]
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")

@@ -35,3 +35,27 @@ class ProvaOut(ProvaBase):
     
     class Config:
         from_attributes = True # Permite que o Pydantic leia dados de objetos do SQLAlchemy
+
+class QuestaoDetalhe(BaseModel):
+    questao: int
+    esperado: str
+    recebido: Optional[str]
+    correto: bool
+
+class DesempenhoResponse(BaseModel):
+    nota: float
+    pontuacao_maxima: int
+    acertos: int
+    total_questoes: int
+    detalhe_por_questao: List[QuestaoDetalhe]
+
+class ResultadoResponse(BaseModel):
+    id: int
+    aluno: str
+    matricula: str
+    nota: float
+    url_correcao: str
+    detalhes: List[QuestaoDetalhe]
+
+    class Config:
+        from_attributes = True
