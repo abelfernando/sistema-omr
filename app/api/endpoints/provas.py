@@ -12,98 +12,50 @@ from app.services.omr_generator import gerar_folha_respostas
 
 router = APIRouter()
 
-@router.post("/provas/", response_model=schemas.ProvaOut)
+@router.post("/", response_model=schemas.ProvaResponse)
 def criar_prova(prova_in: schemas.ProvaCreate, db: Session = Depends(get_db)):
-    # 1. Salva a prova inicial
-    db_prova = models.Prova(
+    # 1. Cria o objeto inicial no banco para obter o ID (necessário para o QR Code)
+    nova_prova = models.Prova(
         titulo=prova_in.titulo,
         num_questoes=prova_in.num_questoes,
         num_alternativas=prova_in.num_alternativas,
-        num_digitos_id=prova_in.num_digitos_id
+        num_digitos_id=prova_in.num_digitos_id,
+        gabarito=prova_in.gabarito # Salva o Dict diretamente no campo JSON 
     )
-    db.add(db_prova)
+    db.add(nova_prova)
     db.commit()
-    db.refresh(db_prova)
+    db.refresh(nova_prova)
 
-    # 2. Gera a folha e obtém o mapa de coordenadas
-    pdf_path = f"static/provas/prova_{db_prova.id}.pdf"
-    mapa_json = gerar_folha_respostas(
-        pdf_path, 
-        None, # Não precisamos salvar o arquivo JSON físico se salvarmos no banco
-        db_prova.num_questoes, 
-        db_prova.num_digitos_id,
-        db_prova.id,
-        db_prova.num_alternativas
-    )
+    try:
+        # 2. Gerar o PDF e o Mapa de Coordenadas
+        # Definimos caminhos para salvar o arquivo físico temporário ou final
+        pdf_path = f"static/pdfs/prova_{nova_prova.id}.pdf"
+        os.makedirs("static/pdfs", exist_ok=True)
 
-    # 3. Atualiza a prova com o mapa de coordenadas
-    db_prova.mapa_coordenadas = mapa_json
-    db.commit()
+        # Chamamos seu serviço enviando o prova_id para o QR Code 
+        mapa_gerado = omr_generator.gerar_folha_respostas(
+            pdf_name=pdf_path,
+            num_questoes=nova_prova.num_questoes,
+            num_digitos_id=nova_prova.num_digitos_id,
+            prova_id=nova_prova.id, # O ID que acabou de ser gerado 
+            num_alternativas=nova_prova.num_alternativas
+        )
+
+        # 3. Atualiza a prova com o mapa de coordenadas gerado
+        nova_prova.mapa_coordenadas = mapa_gerado
+        db.commit()
+        db.refresh(nova_prova)
+
+    except Exception as e:
+        # Se falhar a geração do PDF, removemos o registro para não poluir o banco
+        db.delete(nova_prova)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar folha OMR: {str(e)}")
+
+    return nova_prova
+
     
-    return db_prova
-
-# @router.get("/provas/{prova_id}/pdf", tags=["Download"])
-# def baixar_pdf_prova(prova_id: int, db: Session = Depends(get_db)):
-#     # 1. Busca a prova no banco para verificar a existência
-#     db_prova = db.query(models.Prova).filter(models.Prova.id == prova_id).first()
-    
-#     if not db_prova:
-#         raise HTTPException(status_code=404, detail="Prova não encontrada no banco de dados.")
-
-#     # 2. Define o caminho do arquivo (certifique-se de que é o mesmo usado na criação)
-#     # No Docker, os arquivos costumam ficar na pasta de trabalho definida (ex: /app/static/provas/)
-#     file_path = f"static/provas/prova_{prova_id}.pdf"
-
-#     # 3. Verifica se o arquivo físico realmente existe no disco
-#     if not os.path.exists(file_path):
-#         raise HTTPException(status_code=404, detail="Arquivo PDF não encontrado no servidor.")
-
-#     # 4. Retorna o arquivo para o navegador
-#     # media_type='application/pdf' força o tratamento como PDF
-#     # filename define o nome que aparecerá para o usuário ao salvar
-#     return FileResponse(
-#         path=file_path, 
-#         media_type='application/pdf', 
-#         filename=f"folha_resposta_{db_prova.titulo.replace(' ', '_')}.pdf"
-#     )
-
-
-# @router.post("/processar/upload")
-# async def processar_upload_prova(file: UploadFile = File(...), db: Session = Depends(get_db)):
-#     # 1. Converter upload para imagem OpenCV
-#     contents = await file.read()
-#     nparr = np.frombuffer(contents, np.uint8)
-#     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
-#     if image is None:
-#         raise HTTPException(status_code=400, detail="Arquivo de imagem inválido.")
-
-#     try:
-#         # 2. O pipeline detecta o QR Code e as âncoras para alinhar a imagem 
-#         # Retorna o prova_id lido no QR Code e a imagem perfeitamente alinhada
-#         image_alinhada, prova_id_lido = image_processor.alinhar_e_identificar(image)
-        
-#         # 3. Buscar o mapa de coordenadas no banco de dados usando o ID do QR Code 
-#         db_prova = db.query(models.Prova).filter(models.Prova.id == prova_id_lido).first()
-#         if not db_prova:
-#             raise HTTPException(status_code=404, detail=f"Prova ID {prova_id_lido} não encontrada no banco.")
-
-#         # 4. Executar as extrações usando o mapa_coordenadas 
-#         mapa = db_prova.mapa_coordenadas
-#         nome_aluno = image_processor.ler_nome_aluno_paddle(image_alinhada)
-#         id_aluno = image_processor.ler_identificacao_aluno(image_alinhada, mapa)
-#         respostas = image_processor.ler_questoes(image_alinhada, mapa)
-
-#         return {
-#             "prova_id": prova_id_lido,
-#             "aluno_nome": nome_aluno,
-#             "aluno_matricula": id_aluno,
-#             "respostas": respostas
-#         }
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Erro no processamento: {str(e)}")
-    
+ 
 @router.post("/processar/upload")
 async def processar_upload_prova(file: UploadFile = File(...), 
                                  nota_max: int= 100, # Parâmetro opcional na URL ou Body
