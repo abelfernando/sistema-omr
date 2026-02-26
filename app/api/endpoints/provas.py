@@ -7,8 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
-from app.services import image_processor
-from app.services.omr_generator import gerar_folha_respostas
+from app.services import image_processor, omr_generator
 
 router = APIRouter()
 

@@ -1,32 +1,41 @@
 import requests
 
+# A URL base do seu servidor
 BASE_URL = "http://localhost:8000"
 
 def criar_prova():
     payload = {
-        "titulo": "Prova de Python e OMR",
-        "num_questoes": 10,
+        "titulo": "Teste Direto na Raiz",
+        "num_questoes": 5,
         "num_alternativas": 5,
-        "num_digitos_id": 4,
+        "num_digitos_id": 6,
         "gabarito": {
-            "1": "A", "2": "B", "3": "C", "4": "D", "5": "E",
-            "6": "A", "7": "B", "8": "C", "9": "D", "10": "E"
+            "1": "A",
+            "2": "B",
+            "3": "C",
+            "4": "D",
+            "5": "E"
         }
     }
 
-    print("Enviando requisição de criação...")
-    response = requests.post(f"{BASE_URL}/provas/", json=payload)
+    # Como vimos no seu Swagger, a rota é apenas "/"
+    url_correta = f"{BASE_URL}/"
     
-    if response.status_code == 200:
-        data = response.json()
-        print(f"\n✅ SUCESSO!")
-        print(f"ID da Prova: {data['id']}")
-        print(f"Título: {data['titulo']}")
-        print(f"URL do PDF: {BASE_URL}/static/pdfs/prova_{data['id']}.pdf")
-        print("\nPróximo passo: Abra o PDF, imprima ou exiba na tela, "
-              "preencha e tire uma foto para o próximo teste.")
-    else:
-        print(f"❌ ERRO: {response.text}")
+    print(f"Enviando requisição para: {url_correta}")
+    
+    try:
+        response = requests.post(url_correta, json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            print("\n✅ SUCESSO!")
+            print(f"ID da Prova: {data['id']}")
+            print(f"PDF gerado em: {BASE_URL}/static/pdfs/prova_{data['id']}.pdf")
+        else:
+            print(f"❌ ERRO {response.status_code}: {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Falha na conexão: {e}")
 
 if __name__ == "__main__":
     criar_prova()
