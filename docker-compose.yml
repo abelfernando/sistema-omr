@@ -4,12 +4,14 @@ services:
     container_name: sistema_omr_api
     ports:
       - "8000:8000"
+    shm_size: '1gb'
     volumes:
       - .:/app
       - ./static:/app/static # Persistência de PDFs e imagens processadas
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/omr_db
       - PYTHONUNBUFFERED=1
+      - FLAGS_allocator_strategy=auto_growth
     depends_on:
       db:
         condition: service_healthy

@@ -42,8 +42,9 @@ class ResultadoResponse(BaseModel):
     nota: float
     #URLs para o frontend exibir as imagens
     arquivo_original: Optional[str]
-    arquivo_corecao: Optional[str]
-    rspostas_json: Dict[str, str]
+    arquivo_correcao: Optional[str]
+    url_correcao: Optional[str] = None
+    respostas_json: Dict[str, str]
     detalhes: Optional[List[QuestaoDetalhe]] = None # Campo calculado na API
     data_processamento: datetime
 

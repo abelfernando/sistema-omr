@@ -1,13 +1,11 @@
-# Usa uma imagem Python leve
 FROM python:3.13-slim
 
-# Define o diretório de trabalho
 WORKDIR /app
 
-# - libpq-dev: para conexão com PostgreSQL
-# - gcc: para compilar extensões Python
-# - libgl1 e libglib2.0-0: para o OpenCV rodar em ambientes sem interface gráfica
-# - libzbar0: biblioteca de sistema para leitura de QR Codes e Códigos de Barras
+# Instalação de dependências do sistema
+# libzbar0: Leitura de QR Code
+# libgl1/libglib2.0-0: OpenCV
+# libgomp1: Essencial para o PaddlePaddle rodar modelos de IA
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
@@ -20,14 +18,15 @@ RUN apt-get update && apt-get install -y \
 # Instala o Poetry
 RUN pip install poetry
 
-# Copia os arquivos de configuração do Poetry
+# Configura Poetry e instala dependências
 COPY pyproject.toml poetry.lock* /app/
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-root --no-interaction --no-ansi
 
-# Configura o Poetry para não criar ambientes virtuais dentro do contêiner
-RUN poetry config virtualenvs.create false && poetry install --no-root --no-interaction --no-ansi
-
-# Copia o restante do código
 COPY . /app
 
-# Comando para rodar a aplicação
+# Variavel de ambiente para mitigar erros do Paddle no Docker
+ENV FLAGS_enable_pir_api=0
+ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
