@@ -9,58 +9,93 @@ ocr_engine = PaddleOCR(use_angle_cls=True,
                        enable_mkldnn=False                       
                        )
 
+# Configurações para A4 em 300 DPI
+DPI = 300
+LARGURA_A4 = 2480  # 210mm
+ALTURA_A4 = 3508   # 297mm
+
+# Margem de 30 pontos do ReportLab convertida para 300 DPI
+# (30 / 72) * 300 = 125 pixels
+MARGEM_PX = 125
+
+# Coordenadas de DESTINO fixas (Onde as âncoras DEVERIAM estar)
+DEST_TL = [MARGEM_PX, MARGEM_PX]
+DEST_TR = [LARGURA_A4 - MARGEM_PX, MARGEM_PX]
+DEST_BL = [MARGEM_PX, ALTURA_A4 - MARGEM_PX]
+DEST_BR = [LARGURA_A4 - MARGEM_PX, ALTURA_A4 - MARGEM_PX]
+
+# Constantes de Conversão
+DPI_TARGET = 300
+DPI_REPORTLAB = 72
+ESCALA = DPI_TARGET / DPI_REPORTLAB  # 4.1666...
+LARGURA_A4_PX = 2480
+ALTURA_A4_PX = 3508
+
+def converter_coordenada(ponto_x, ponto_y):
+    """
+    Converte coordenadas do JSON (points) para Pixels (300 DPI)
+    ajustando a inversão do eixo Y.
+    """
+    px = int(ponto_x * ESCALA)
+    # Inverte o Y: Altura total menos a posição vinda do ReportLab
+    py = int(ALTURA_A4_PX - (ponto_y * ESCALA))
+    return px, py
+
 def align_image(image):
-    """
-    Detecta as âncoras e ordena os pontos corretamente para evitar rotações erradas.
-    """
+    # 1. Pré-processamento para encontrar os quadrados pretos
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Binarização adaptativa para destacar as âncoras pretas
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                    cv2.THRESH_BINARY_INV, 11, 2)
-    
-    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    centros_ancoras = []
-    
-    for c in cnts:
-        area = cv2.contourArea(c)
-        if 200 < area < 8000: # Filtro de tamanho para as âncoras
-            M = cv2.moments(c)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                centros_ancoras.append([cX, cY])
 
-    if len(centros_ancoras) >= 4:
-        # Pegamos as 4 maiores áreas detectadas como âncoras
-        pts = np.array(centros_ancoras, dtype="float32")
-        
-        # --- LÓGICA DE ORDENAÇÃO ROBUSTA ---
-        rect = np.zeros((4, 2), dtype="float32")
-        
-        # O ponto superior esquerdo terá a menor soma (x + y)
-        # O ponto inferior direito terá a maior soma (x + y)
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)]
-        rect[2] = pts[np.argmax(s)]
-        
-        # O ponto superior direito terá a menor diferença (y - x)
-        # O ponto inferior esquerdo terá a maior diferença (y - x)
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)]
-        rect[3] = pts[np.argmax(diff)]
-
-        # Definimos o destino com uma margem interna de 10px para garantir que nada seja cortado
-        dst = np.array([
-            [10, 10],
-            [585, 10],
-            [585, 832],
-            [10, 832]], dtype="float32")
-
-        M = cv2.getPerspectiveTransform(rect, dst)
-        return cv2.warpPerspective(image, M, (595, 842))
+    # 2. Detectar contornos das âncoras
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    anchors = []
     
-    # Se não achar 4 pontos, retorna redimensionado mas sem inverter
-    return cv2.resize(image, (595, 842))
+    for cnt in contours:
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        
+        # Filtra por formas quadrangulares e tamanho mínimo
+        if len(approx) == 4:
+            x, y, w, h = cv2.boundingRect(approx)
+            aspect_ratio = float(w) / h
+            if 0.8 <= aspect_ratio <= 1.2 and w > 20: # Ajuste o tamanho conforme necessário
+                M = cv2.moments(cnt)
+                if M["m00"] != 0:
+                    cx = int(M["m10"] / M["m00"])
+                    cy = int(M["m01"] / M["m00"])
+                    anchors.append([cx, cy])
+
+    if len(anchors) < 4:
+        raise ValueError(f"Foram encontradas apenas {len(anchors)} âncoras. Necessário 4.")
+
+    # 3. Ordenar as âncoras detectadas (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
+    # Lógica: soma (x+y) mínima é TL, máxima é BR. Diferença (x-y) máxima é TR, mínima é BL.
+    pts = np.array(anchors, dtype="float32")
+    rect = np.zeros((4, 2), dtype="float32")
+    
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)] # TL
+    rect[3] = pts[np.argmax(s)] # BR
+    
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)] # TR
+    rect[2] = pts[np.argmax(diff)] # BL
+
+    # 4. Definir pontos de DESTINO REAIS baseados no template
+    dst = np.array([
+        DEST_TL,
+        DEST_TR,
+        DEST_BL,
+        DEST_BR
+    ], dtype="float32")
+
+    # 5. Calcular Matriz de Homografia e Aplicar Warp
+    M = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(image, M, (LARGURA_A4, ALTURA_A4), flags=cv2.INTER_CUBIC)
+
+    return warped
 
 def corrigir_orientacao_por_qrcode(image_warped):
     # O pyzbar funciona melhor com um pouco de contraste extra
@@ -119,11 +154,18 @@ def alinhar_e_identificar(image):
     # }
 
 def ler_identificacao_aluno(image, mapa_json):
+    # Fator de escala: converte Pontos (72 DPI) para Pixels (300 DPI)
+    escala = 300 / 72
+    altura_px = 3508
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+    
+    # Substituindo threshold fixo por Adaptive para melhor performance com fotos de celular
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                   cv2.THRESH_BINARY_INV, 11, 2)
     
     id_detectado = ""
-    # Acesse a página 1 (como string, conforme gerado pelo omr_generator)
+    # Acesse a página 1
     bubbles_data = mapa_json['paginas']['1']['id_bubbles']
     
     for coluna in bubbles_data:
@@ -131,11 +173,18 @@ def ler_identificacao_aluno(image, mapa_json):
         maior_densidade = 0
         
         for bubble in coluna:
-            x, y = int(bubble['x']), 842 - int(bubble['y']) # Ajuste de Y invertido
-            roi = thresh[y-6:y+6, x-6:x+6]
+            # APLICAÇÃO DA ESCALA E INVERSÃO DE EIXO
+            x = int(bubble['x'] * escala)
+            y = int(altura_px - (bubble['y'] * escala))
+            
+            # ROI ajustado: em 300 DPI, o raio de 6 pixels era muito pequeno. 
+            # Subimos para 20 pixels para cobrir a bolinha da matrícula.
+            raio = 20 
+            roi = thresh[y-raio:y+raio, x-raio:x+raio]
             densidade = cv2.countNonZero(roi)
             
-            if densidade > maior_densidade and densidade > 20:
+            # Threshold de densidade aumentado para compensar a área maior do ROI
+            if densidade > maior_densidade and densidade > 300:
                 maior_densidade = densidade
                 melhor_val = bubble['val']
         
@@ -146,14 +195,22 @@ def ler_identificacao_aluno(image, mapa_json):
 
 def ler_nome_aluno_paddle(image_alinhada):
     """
-    Extrai o texto manuscrito usando o novo método predict() do PaddleOCR.
+    Extrai o texto manuscrito usando o novo método predict() do PaddleOCR,
+    ajustado para a resolução de 300 DPI.
     """
-    # Recorte da região do nome (ROI) - Ajustado conforme seu layout
-    # Se a folha está em 595x842, o campo nome costuma estar entre y=40 e y=120
-    roi_nome = image_alinhada[50:150, 50:550] 
+    # Fator de escala: converte Pontos (72 DPI) para Pixels (300 DPI)
+    escala = 300 / 72  # ~4.1667
 
-    # MODIFICADO: Usando predict() conforme recomendado pela nova versão
-    # O predict() retorna uma lista de objetos de predição
+    # Ajuste do ROI (Região de Interesse)
+    # Se no layout original (595x842) o nome estava em y:50-150 e x:50-550
+    # Multiplicamos esses limites pela escala para encontrar a posição na imagem de 300 DPI.
+    y1, y2 = int(50 * escala), int(150 * escala)
+    x1, x2 = int(50 * escala), int(550 * escala)
+    
+    # Recorte da região do nome (ROI) na nova escala (aprox. 208:625, 208:2291)
+    roi_nome = image_alinhada[y1:y2, x1:x2] 
+
+    # Chamada do OCR
     results = ocr_engine.predict(roi_nome)
 
     if not results:
@@ -161,14 +218,14 @@ def ler_nome_aluno_paddle(image_alinhada):
 
     textos = []
     
-    # A estrutura do predict() exige iterar pelos resultados detectados
+    # Iteração pelos resultados do predict()
     for res in results:
         for line in res:
             # line[1][0] contém o texto reconhecido
-            # line[1][1] contém a confiança (score)
             textos.append(line[1][0])
 
-    nome_completo = " ".join(textos).strip().upper()
+    # Join e limpeza profunda de espaços
+    nome_completo = "".join(textos).strip().upper()
     nome_limpo = nome_completo.replace(" ", "")
 
     return nome_limpo if nome_limpo else "NOME NAO DETECTADO"
@@ -181,6 +238,10 @@ def ler_nome_aluno_paddle(image_alinhada):
 #     return " ".join([line[1][0] for line in result[0]]).strip().upper()
 
 def ler_questoes(image_alinhada, mapa_json):
+    # Fator de escala: converte Pontos (72 DPI) para Pixels (300 DPI)
+    escala = 300 / 72  # Aproximadamente 4.1667
+    altura_px = 3508   # Altura da nossa imagem normalizada
+
     gray = cv2.cvtColor(image_alinhada, cv2.COLOR_BGR2GRAY)
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                    cv2.THRESH_BINARY_INV, 11, 2)
@@ -194,13 +255,20 @@ def ler_questoes(image_alinhada, mapa_json):
         maior_densidade = 0
         
         for letra, coord in alternativas.items():
-            x = int(coord[0])
-            y = 842 - int(coord[1]) # Inversão ReportLab -> OpenCV
+            # APLICAÇÃO DA ESCALA E INVERSÃO PRECISA
+            # Multiplicamos a coordenada original pela escala e subtraímos da altura total em pixels
+            x = int(coord[0] * escala)
+            y = int(altura_px - (coord[1] * escala))
             
-            roi = thresh[y-7:y+7, x-7:x+7]
+            # ROI aumentado: como a imagem agora é maior (300 DPI), 
+            # o raio de 7 pixels ficou pequeno. Aumentamos para ~25 pixels.
+            raio = 25 
+            roi = thresh[y-raio:y+raio, x-raio:x+raio]
             densidade = cv2.countNonZero(roi)
             
-            if densidade > maior_densidade and densidade > 30: 
+            # O limite de densidade (30) também precisa subir proporcionalmente à área
+            # Uma bolinha preenchida em 300 DPI terá muito mais pixels que em 72 DPI.
+            if densidade > maior_densidade and densidade > 400: 
                 maior_densidade = densidade
                 melhor_alternativa = letra
         
@@ -222,23 +290,42 @@ def calcular_resultado(respostas_aluno, gabarito_oficial, pontuacao_maxima=100):
     nota = (acertos / total_questoes) * pontuacao_maxima if total_questoes > 0 else 0
     return {"nota": round(nota, 2), "acertos": acertos, "total": total_questoes, "detalhes": detalhes}
 
-def gerar_imagem_correcao(image_alinhada, respostas_aluno, gabarito_oficial, mapa_json):
-    img_feedback = image_alinhada.copy()
-    questoes_map = mapa_json['paginas']['1']['questoes']
+def gerar_imagem_correcao(image_alinhada, respostas_lidas, gabarito, mapa_json):
+    """
+    Desenha círculos verdes (acerto) e vermelhos (erro) na imagem de 300 DPI.
+    """
+    # Fator de escala e altura para 300 DPI
+    escala = 300 / 72
+    altura_px = 3508
     
-    for q_num, resp_correta in gabarito_oficial.items():
-        q_str = str(q_num)
-        if q_str not in questoes_map: continue
-        
-        resp_aluno = respostas_aluno.get(int(q_num))
-        
-        # Desenhar correto em VERDE
-        c_correto = questoes_map[q_str][resp_correta]
-        cv2.circle(img_feedback, (int(c_correto[0]), 842 - int(c_correto[1])), 8, (0, 255, 0), 2)
+    # Criar uma cópia para não alterar a imagem original
+    img_feedback = image_alinhada.copy()
+    questoes_mapa = mapa_json['paginas']['1']['questoes']
 
-        # Se errou, desenhar marcação do aluno em VERMELHO
-        if resp_aluno and resp_aluno != resp_correta:
-            c_aluno = questoes_map[q_str][resp_aluno]
-            cv2.circle(img_feedback, (int(c_aluno[0]), 842 - int(c_aluno[1])), 8, (0, 0, 255), 2)
+    for num_q, alternativas in questoes_mapa.items():
+        correta = gabarito.get(str(num_q))
+        lida = respostas_lidas.get(int(num_q))
+
+        for letra, coord in alternativas.items():
+            # CONVERSÃO PARA 300 DPI
+            cx = int(coord[0] * escala)
+            cy = int(altura_px - (coord[1] * escala))
             
+            # Definir a cor do círculo
+            # Verde: É a alternativa correta
+            # Vermelho: O aluno marcou esta, mas estava errada
+            cor = None
+            if letra == correta:
+                cor = (0, 255, 0)  # Verde (BGR)
+            elif letra == lida and lida != correta:
+                cor = (0, 0, 255)  # Vermelho (BGR)
+
+            if cor:
+                # Raio ajustado para 300 DPI (aprox. 30 pixels para envolver a bolinha)
+                cv2.circle(img_feedback, (cx, cy), 30, cor, 3)
+                
+                # Se for o erro do aluno, fazemos um círculo preenchido menor ou uma marca extra
+                if cor == (0, 0, 255):
+                    cv2.circle(img_feedback, (cx, cy), 5, cor, -1)
+
     return img_feedback
