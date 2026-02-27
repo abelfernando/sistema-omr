@@ -292,14 +292,20 @@ def calcular_resultado(respostas_aluno, gabarito_oficial, pontuacao_maxima=100):
 
 def gerar_imagem_correcao(image_alinhada, respostas_lidas, gabarito, mapa_json):
     """
-    Desenha círculos verdes (acerto) e vermelhos (erro) na imagem de 300 DPI.
+    Desenha círculos verdes (acerto) e vermelhos (erro) na imagem de 300 DPI,
+    usando um raio dinâmico para máxima precisão.
     """
     # Fator de escala e altura para 300 DPI
     escala = 300 / 72
     altura_px = 3508
     
-    # Criar uma cópia para não alterar a imagem original
+    # Criar uma cópia para não alterar a imagem original e converter para BGR para cores
     img_feedback = image_alinhada.copy()
+    
+    # Pre-processamento para detecção dinâmica (Otsu Thresholding)
+    gray = cv2.cvtColor(img_feedback, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    
     questoes_mapa = mapa_json['paginas']['1']['questoes']
 
     for num_q, alternativas in questoes_mapa.items():
@@ -311,9 +317,38 @@ def gerar_imagem_correcao(image_alinhada, respostas_lidas, gabarito, mapa_json):
             cx = int(coord[0] * escala)
             cy = int(altura_px - (coord[1] * escala))
             
-            # Definir a cor do círculo
-            # Verde: É a alternativa correta
-            # Vermelho: O aluno marcou esta, mas estava errada
+            # --- AJUSTE DINÂMICO DE RAIO ---
+            # Define um ROI local maior para busca
+            raio_busca = 50 
+            # Garante que o ROI não saia da imagem
+            y1 = max(0, cy - raio_busca)
+            y2 = min(altura_px, cy + raio_busca)
+            x1 = max(0, cx - raio_busca)
+            x2 = min(2480, cx + raio_busca)
+            
+            roi_local = thresh[y1:y2, x1:x2]
+            
+            # Encontra contornos no ROI
+            cnts, _ = cv2.findContours(roi_local, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            raio_dinamico = 30 # Raio padrão caso a busca falhe
+            
+            if cnts:
+                # Pega o maior contorno no ROI (que deve ser a bolinha)
+                c_max = max(cnts, key=cv2.contourArea)
+                
+                # Encontra o círculo delimitador mínimo (minEnclosingCircle)
+                # que dá o raio real da bolinha na imagem normalizada
+                (_, _), radio_encontrado = cv2.minEnclosingCircle(c_max)
+                
+                # Adiciona uma margem de segurança ao raio (ex: +20%) para o desenho
+                raio_dinamico = int(radio_encontrado * 1.20)
+                
+                # Garante um raio mínimo de desenho
+                if raio_dinamico < 25:
+                    raio_dinamico = 30
+            
+            # --- LÓGICA DE CORES E DESENHO ---
             cor = None
             if letra == correta:
                 cor = (0, 255, 0)  # Verde (BGR)
@@ -321,11 +356,12 @@ def gerar_imagem_correcao(image_alinhada, respostas_lidas, gabarito, mapa_json):
                 cor = (0, 0, 255)  # Vermelho (BGR)
 
             if cor:
-                # Raio ajustado para 300 DPI (aprox. 30 pixels para envolver a bolinha)
-                cv2.circle(img_feedback, (cx, cy), 30, cor, 3)
+                # Espessura dinâmica baseada no raio para manter proporção
+                espessura = max(2, int(raio_dinamico / 10))
+                cv2.circle(img_feedback, (cx, cy), raio_dinamico, cor, espessura)
                 
-                # Se for o erro do aluno, fazemos um círculo preenchido menor ou uma marca extra
+                # Se for o erro do aluno, adiciona um círculo preenchido menor (marcador)
                 if cor == (0, 0, 255):
-                    cv2.circle(img_feedback, (cx, cy), 5, cor, -1)
+                    cv2.circle(img_feedback, (cx, cy), 10, cor, -1)
 
     return img_feedback
