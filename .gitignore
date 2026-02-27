@@ -209,3 +209,4 @@ __marimo__/
 # Ignorar a pasta de arquivos gerados em teste
 arquivos gerados em teste/
 static/
+testes/*.jpg
